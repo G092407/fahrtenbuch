@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d2330">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fahrtenbuch">
+<title>Fahrtenbuch</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --mut:#6b7280; --acc:#1f6feb; --ok:#1a7f37; --bad:#cf222e; --line:#e3e6eb; --warn:#9a6700; --warnbg:#fff8e1; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--ink); color:#fff; padding:calc(14px + env(safe-area-inset-top)) 16px 0; position:sticky; top:0; z-index:5; }
+  header h1 { margin:0 0 10px; font-size:18px; }
+  nav { display:flex; gap:4px; }
+  nav button { flex:1; background:none; border:0; color:#c9cfdb; padding:10px 4px; font-size:15px; border-bottom:3px solid transparent; }
+  nav button.on { color:#fff; border-color:#58a6ff; font-weight:600; }
+  main { max-width:560px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border-radius:12px; padding:16px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .card h2 { margin:0 0 10px; font-size:16px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:12px 0 4px; }
+  input, select, textarea { width:100%; padding:11px 12px; font-size:16px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); -webkit-appearance:none; appearance:none; }
+  input[type=datetime-local], input[type=date] { min-height:46px; }
+  .row { display:flex; gap:10px; } .row > div { flex:1; min-width:0; }
+  .stack > div + div { margin-top:0; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { padding:9px 14px; border:1px solid var(--line); border-radius:20px; background:#fff; font-size:15px; cursor:pointer; user-select:none; -webkit-user-select:none; }
+  .chip.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .btn { width:100%; margin-top:16px; padding:14px; font-size:16px; font-weight:600; border:0; border-radius:10px; background:var(--acc); color:#fff; }
+  .btn:disabled { opacity:.55; }
+  .btn.sec { background:#e8eef7; color:var(--acc); margin-top:10px; }
+  .hint { font-size:13px; color:var(--mut); margin-top:6px; }
+  .msg { padding:12px; border-radius:8px; margin-bottom:14px; font-size:15px; display:none; }
+  .msg.ok { display:block; background:#dafbe1; color:var(--ok); } .msg.err { display:block; background:#ffebe9; color:var(--bad); }
+  .park a { color:var(--acc); font-weight:600; text-decoration:none; }
+  .ortbox { margin-top:14px; padding:12px; border-radius:10px; background:var(--warnbg); border:1px solid #f0d58c; }
+  .ortbox b { color:var(--warn); }
+  .ortbox ol { margin:6px 0 0; padding-left:20px; font-size:13px; color:#5c4a00; }
+  .status { font-weight:600; } .status.frei { color:var(--ok); } .status.belegt { color:var(--bad); }
+  .res { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
+  .res:first-child { border-top:0; }
+  .res small { color:var(--mut); display:block; }
+  .res button { background:none; border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:var(--bad); font-size:13px; }
+  .tl { display:grid; grid-template-columns:repeat(14,1fr); gap:3px; margin-top:6px; }
+  .tl div { height:30px; border-radius:4px; background:#dafbe1; font-size:10px; text-align:center; line-height:30px; color:#555; }
+  .tl div.teil { background:#fff1c2; } .tl div.voll { background:#ffd6d3; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:right; padding:7px 4px; border-top:1px solid var(--line); } th:first-child, td:first-child { text-align:left; }
+  td.neg { color:var(--bad); } td.pos { color:var(--ok); }
+  .hidden { display:none !important; }
+  .laden { text-align:center; color:var(--mut); padding:30px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚗 Fahrtenbuch</h1>
+  <nav>
+    <button data-tab="fahrt" class="on">Fahrt</button>
+    <button data-tab="res">Reservieren</button>
+    <button data-tab="ueb">Übersicht</button>
+  </nav>
+</header>
+<main>
+  <div id="msg" class="msg"></div>
+
+  <!-- ===== Fahrt ===== -->
+  <section id="tab-fahrt">
+    <div class="card park" id="park"><div class="laden">Lade Daten …</div></div>
+    <div class="card">
+      <h2>Fahrt eintragen</h2>
+      <label>Fahrer (mehrere möglich)</label>
+      <div class="chips" id="fahrerChips"></div>
+      <div class="hint" id="teilHint"></div>
+      <label for="datum">Datum</label>
+      <input type="date" id="datum">
+      <div class="row">
+        <div><label for="kmStart">KM-Stand Start</label><input type="number" inputmode="numeric" id="kmStart"></div>
+        <div><label for="kmEnde">KM-Stand Ende</label><input type="number" inputmode="numeric" id="kmEnde"></div>
+      </div>
+      <div class="row">
+        <div><label for="getankt">Getankt (€)</label><input type="text" inputmode="decimal" id="getankt" placeholder="0,00"></div>
+        <div id="bezahltBox" class="hidden"><label for="bezahltVon">Bezahlt von</label><select id="bezahltVon"></select></div>
+      </div>
+      <label for="notiz">Notiz (optional)</label>
+      <input type="text" id="notiz" placeholder="z. B. Parkplatz Hinterhof">
+
+      <!-- erscheint, wenn der automatische Standort nicht klappt -->
+      <div class="ortbox hidden" id="ortBox">
+        <b>Standort konnte nicht automatisch ermittelt werden.</b>
+        <div class="hint" id="ortFehler"></div>
+        <label for="standortText">Standort einfügen (Maps-Link, Koordinaten oder Adresse)</label>
+        <input type="text" id="standortText" placeholder="z. B. 50.9908, 11.0051">
+        <ol>
+          <li>Apple Karten öffnen → auf den blauen Punkt tippen → <b>Teilen</b> → <b>Kopieren</b> → hier einfügen.</li>
+          <li>Oder dauerhaft lösen: <b>Einstellungen → Datenschutz &amp; Sicherheit → Ortungsdienste → Safari-Websites → „Beim Verwenden der App“</b>, dann Seite neu laden.</li>
+        </ol>
+        <button class="btn sec" id="btnNochmal">📍 Automatisch erneut versuchen</button>
+        <button class="btn sec" id="btnOhne">Ohne Standort speichern</button>
+      </div>
+
+      <button class="btn" id="btnFahrt">📍 Standort erfassen &amp; speichern</button>
+      <div class="hint">Beim Speichern wird der aktuelle Standort abgefragt – also erst speichern, wenn das Auto geparkt ist.</div>
+    </div>
+  </section>
+
+  <!-- ===== Reservieren ===== -->
+  <section id="tab-res" class="hidden">
+    <div class="card">
+      <h2>Verfügbarkeit</h2>
+      <div id="jetzt" class="status"></div>
+      <div class="tl" id="timeline"></div>
+      <div class="hint">Nächste 14 Tage · grün frei · gelb teilweise · rot ganztägig reserviert</div>
+    </div>
+    <div class="card">
+      <h2>Zeitraum reservieren</h2>
+      <label for="resName">Name</label>
+      <select id="resName"></select>
+      <label for="resVon">Von</label><input type="datetime-local" id="resVon">
+      <label for="resBis">Bis</label><input type="datetime-local" id="resBis">
+      <label for="resZweck">Zweck (optional)</label>
+      <input type="text" id="resZweck" placeholder="z. B. Umzug, Wochenende Ostsee">
+      <button class="btn" id="btnRes">Reservieren</button>
+    </div>
+    <div class="card">
+      <h2>Kommende Reservierungen</h2>
+      <div id="resListe"></div>
+    </div>
+  </section>
+
+  <!-- ===== Übersicht ===== -->
+  <section id="tab-ueb" class="hidden">
+    <div class="card">
+      <h2>Abrechnung je Fahrer</h2>
+      <table><thead><tr><th>Fahrer</th><th>KM</th><th>Anteil</th><th>Getankt</th><th>Saldo</th></tr></thead><tbody id="saldo"></tbody></table>
+      <div class="hint">Bei mehreren Fahrern werden KM und Kosten einer Fahrt gleichmäßig verteilt. Saldo + = bekommt Geld, − = muss zahlen.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* Adresse des Backends (Google Apps Script Web-App). Alle Daten liegen im Google Sheet. */
+const API_URL = 'https://script.google.com/macros/s/AKfycbxzzu_ySbRtuMvoqDohm5OiJYqViRO06lc7L1DdXJgmx5KjLGZaZasBtLoE89q2TT2EFQ/exec';
+
+/**
+ * Ruft eine Aktion im Backend auf.
+ * Body als Text (nicht application/json), damit der Browser keine CORS-Vorabanfrage schickt,
+ * die Apps Script nicht beantworten kann.
+ */
+async function api(aktion, daten) {
+  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ aktion, daten: daten || {} }) });
+  if (!r.ok) throw new Error('Server nicht erreichbar (' + r.status + ')');
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.fehler || 'Unbekannter Fehler');
+  return j.daten;
+}
+
+let D = { fahrer: [], letzte: null, reservierungen: [], saldo: [] };
+let gewaehlt = new Set();
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const eur = n => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+const fmt = t => new Date(t).toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const zahl = s => Number(String(s || '').replace(/\s/g, '').replace(',', '.')) || 0;
+const ich = () => { try { return localStorage.getItem('fb_ich') || ''; } catch (e) { return ''; } };
+const merke = n => { try { localStorage.setItem('fb_ich', n); } catch (e) {} };
+const BTN_TEXT = '📍 Standort erfassen & speichern';
+
+function zeige(text, ok) { const m = $('msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); window.scrollTo(0, 0); if (ok) setTimeout(() => m.className = 'msg', 5000); }
+function knopfFrei() { $('btnFahrt').disabled = false; $('btnRes').disabled = false; $('btnFahrt').textContent = BTN_TEXT; }
+function fehler(e) { zeige(e && e.message ? e.message : String(e), false); knopfFrei(); }
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['fahrt', 'res', 'ueb'].forEach(t => $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+});
+
+function render(d) {
+  D = d;
+  const l = d.letzte;
+  if (!l) $('park').innerHTML = 'Noch keine Fahrt eingetragen.';
+  else {
+    const link = l.link || l.linkAlt;
+    $('park').innerHTML = '<b>Auto steht zuletzt:</b> ' + (link ? '<a href="' + esc(link) + '" target="_blank" rel="noopener">📍 auf Karte öffnen</a>' : 'kein Standort bekannt') +
+      '<div class="hint">' + (l.zeit ? fmt(l.zeit) : '') + ' · ' + esc(l.fahrer) + ' · KM-Stand ' + l.kmEnde.toLocaleString('de-DE') + (l.link ? '' : (link ? ' · Standort von früherer Fahrt' : '')) + '</div>';
+  }
+  if (!gewaehlt.size && ich() && d.fahrer.includes(ich())) gewaehlt.add(ich());
+  $('fahrerChips').innerHTML = '';
+  d.fahrer.forEach(n => {
+    const c = document.createElement('span');
+    c.className = 'chip' + (gewaehlt.has(n) ? ' on' : ''); c.textContent = n;
+    c.onclick = () => { gewaehlt.has(n) ? gewaehlt.delete(n) : gewaehlt.add(n); c.classList.toggle('on'); teilHint(); };
+    $('fahrerChips').appendChild(c);
+  });
+  const opts = d.fahrer.map(n => '<option' + (n === ich() ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+  $('bezahltVon').innerHTML = opts;
+  $('resName').innerHTML = '<option value="">– auswählen –</option>' + opts;
+  if (l) $('kmStart').value = l.kmEnde;
+  teilHint();
+  renderRes();
+  $('saldo').innerHTML = d.saldo.map(s => '<tr><td>' + esc(s.name) + '</td><td>' + s.km.toLocaleString('de-DE', { maximumFractionDigits: 1 }) +
+    '</td><td>' + eur(s.anteil) + '</td><td>' + eur(s.bezahlt) + '</td><td class="' + (s.saldo < -0.005 ? 'neg' : s.saldo > 0.005 ? 'pos' : '') + '">' + eur(s.saldo) + '</td></tr>').join('');
+}
+
+function teilHint() {
+  const n = gewaehlt.size, km = (+$('kmEnde').value || 0) - (+$('kmStart').value || 0);
+  $('teilHint').textContent = n > 1 ? n + ' Fahrer – jeder bekommt 1/' + n + (km > 0 ? ' = ' + (km / n).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' km' : '') + ' angerechnet.' : '';
+}
+['kmStart', 'kmEnde'].forEach(i => $(i).addEventListener('input', teilHint));
+$('getankt').addEventListener('input', () => $('bezahltBox').classList.toggle('hidden', !(zahl($('getankt').value) > 0)));
+
+function renderRes() {
+  const r = D.reservierungen, now = Date.now();
+  const aktiv = r.find(x => x.von <= now && x.bis > now);
+  $('jetzt').className = 'status ' + (aktiv ? 'belegt' : 'frei');
+  $('jetzt').textContent = aktiv ? 'Jetzt reserviert von ' + aktiv.name + ' bis ' + fmt(aktiv.bis) : 'Jetzt frei' + (r[0] ? ' · nächste Reservierung ' + fmt(r[0].von) + ' (' + r[0].name + ')' : '');
+  const tl = $('timeline'); tl.innerHTML = '';
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  for (let i = 0; i < 14; i++) {
+    const a = new Date(t0); a.setDate(t0.getDate() + i);
+    const b = new Date(a); b.setDate(a.getDate() + 1);
+    const dauer = b - a;
+    let belegt = 0;
+    r.forEach(x => { belegt += Math.max(0, Math.min(b, x.bis) - Math.max(a, x.von)); });
+    const c = document.createElement('div');
+    c.className = belegt >= dauer - 6e4 ? 'voll' : belegt > 0 ? 'teil' : '';
+    c.textContent = a.getDate() + '.';
+    c.title = r.filter(x => x.von < b && x.bis > a).map(x => x.name + ' ' + fmt(x.von) + '–' + fmt(x.bis)).join('\n');
+    tl.appendChild(c);
+  }
+  $('resListe').innerHTML = r.length ? r.map(x => '<div class="res"><div><b>' + esc(x.name) + '</b><small>' + fmt(x.von) + ' – ' + fmt(x.bis) + (x.zweck ? ' · ' + esc(x.zweck) : '') +
+    '</small></div><button data-id="' + esc(x.id) + '">Stornieren</button></div>').join('') : '<div class="hint">Keine Reservierungen.</div>';
+  $('resListe').querySelectorAll('button').forEach(b => b.onclick = async () => {
+    if (!confirm('Reservierung wirklich stornieren?')) return;
+    try { render(await api('stornieren', { id: b.dataset.id })); zeige('Reservierung storniert.', true); } catch (e) { fehler(e); }
+  });
+}
+
+/* ---------- Fahrt speichern ---------- */
+
+function fahrtDaten() {
+  return {
+    fahrer: [...gewaehlt], datum: $('datum').value, kmStart: $('kmStart').value, kmEnde: $('kmEnde').value,
+    getankt: zahl($('getankt').value), bezahltVon: $('bezahltVon').value, notiz: $('notiz').value
+  };
+}
+
+function pruefe(d) {
+  if (!d.fahrer.length) { zeige('Bitte mindestens einen Fahrer auswählen.', false); return false; }
+  if (d.kmEnde === '' || +d.kmEnde < +d.kmStart) { zeige('Bitte KM-Stand Ende prüfen.', false); return false; }
+  return true;
+}
+
+async function senden(daten, pos) {
+  if (pos) { daten.lat = pos.coords.latitude; daten.lng = pos.coords.longitude; daten.genauigkeit = pos.coords.accuracy; }
+  $('btnFahrt').disabled = true; $('btnFahrt').textContent = 'Speichere …';
+  try {
+    const d = await api('fahrt', daten);
+    if (daten.fahrer.length === 1) merke(daten.fahrer[0]);
+    ['kmEnde', 'getankt', 'notiz', 'standortText'].forEach(i => $(i).value = '');
+    $('bezahltBox').classList.add('hidden'); $('ortBox').classList.add('hidden');
+    gewaehlt = new Set(); render(d); knopfFrei();
+    zeige(pos ? 'Fahrt gespeichert – Standort erfasst.' : daten.standortText ? 'Fahrt gespeichert – Standort übernommen.' : 'Fahrt gespeichert (ohne Standort).', true);
+  } catch (e) { fehler(e); }
+}
+
+function standortHolen(daten) {
+  if (!navigator.geolocation) { zeigeOrtBox('Dieses Gerät unterstützt keine Standortabfrage.'); return; }
+  $('btnFahrt').disabled = true; $('btnFahrt').textContent = '📍 Standort wird ermittelt …';
+  navigator.geolocation.getCurrentPosition(
+    pos => senden(daten, pos),
+    err => {
+      knopfFrei();
+      const grund = err.code === 1 ? 'Zugriff auf den Standort wurde verweigert.' : err.code === 3 ? 'Zeitüberschreitung – kein GPS-Signal.' : 'Standort nicht verfügbar.';
+      zeigeOrtBox(grund + (err.message ? ' (' + err.message + ')' : ''));
+    },
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 });
+}
+
+function zeigeOrtBox(text) {
+  $('ortFehler').textContent = text;
+  $('ortBox').classList.remove('hidden');
+  $('btnFahrt').textContent = 'Mit eingefügtem Standort speichern';
+  $('ortBox').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+$('btnFahrt').onclick = () => {
+  const daten = fahrtDaten();
+  if (!pruefe(daten)) return;
+  const manuell = $('standortText').value.trim();
+  if (!$('ortBox').classList.contains('hidden')) {
+    if (!manuell) { zeige('Bitte einen Standort einfügen – oder „Ohne Standort speichern“ wählen.', false); return; }
+    daten.standortText = manuell;
+    senden(daten, null);
+    return;
+  }
+  standortHolen(daten);
+};
+$('btnNochmal').onclick = () => { const d = fahrtDaten(); if (pruefe(d)) standortHolen(d); };
+$('btnOhne').onclick = () => { const d = fahrtDaten(); if (pruefe(d)) senden(d, null); };
+
+/* ---------- Reservieren ---------- */
+
+$('btnRes').onclick = async () => {
+  const von = $('resVon').value, bis = $('resBis').value;
+  if (!$('resName').value) return zeige('Bitte Namen auswählen.', false);
+  if (!von || !bis) return zeige('Bitte Start und Ende angeben.', false);
+  $('btnRes').disabled = true;
+  try {
+    const d = await api('reservieren', { name: $('resName').value, von: new Date(von).getTime(), bis: new Date(bis).getTime(), zweck: $('resZweck').value });
+    merke($('resName').value); render(d); knopfFrei();
+    $('resVon').value = ''; $('resBis').value = ''; $('resZweck').value = '';
+    zeige('Reserviert ✔', true);
+  } catch (e) { fehler(e); }
+};
+const lokal = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+$('resVon').addEventListener('change', () => { if (!$('resBis').value && $('resVon').value) { const d = new Date($('resVon').value); d.setHours(d.getHours() + 3); $('resBis').value = lokal(d); } });
+
+/* ---------- Start ---------- */
+
+$('datum').value = lokal(new Date()).slice(0, 10);
+api('start').then(render).catch(e => { $('park').textContent = 'Daten konnten nicht geladen werden.'; fehler(e); });
+</script>
+</body>
+</html>
